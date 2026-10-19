@@ -13,6 +13,8 @@ import time
 from typing import Dict, Any, Optional
 
 from .config import (
+    APP_SETTINGS,
+    UI_EDITABLE_SETTINGS,
     HOST,
     PORT,
     SAMPLE_RATE,
@@ -22,6 +24,12 @@ from .config import (
     MAX_CLAP_INTERVAL_MS,
     MAX_TRANSIENT_DURATION_MS,
     COOLDOWN_MS,
+    PAIR_CONFIRMATION_MS,
+    MIN_LOW_BAND_SHARE,
+    MIN_CRACK_BAND_SHARE,
+    MIN_PEAK_THRESHOLD,
+    RATIO_SENSITIVE,
+    RATIO_STRICT,
     AUDIO_DEVICE_INDEX,
 )
 from .detector import DoubleClapDetector, PyAudioStream, MockAudioStream, ActivationEvent
@@ -63,6 +71,12 @@ class ActivationService:
             max_clap_interval_ms=MAX_CLAP_INTERVAL_MS,
             max_transient_duration_ms=MAX_TRANSIENT_DURATION_MS,
             cooldown_ms=COOLDOWN_MS,
+            pair_confirmation_ms=PAIR_CONFIRMATION_MS,
+            min_low_band_share=MIN_LOW_BAND_SHARE,
+            min_crack_band_share=MIN_CRACK_BAND_SHARE,
+            min_peak_threshold=MIN_PEAK_THRESHOLD,
+            ratio_sensitive=RATIO_SENSITIVE,
+            ratio_strict=RATIO_STRICT,
             on_activation=self._on_activation_detected,
             on_debug=self._on_detector_debug,
         )
@@ -121,6 +135,22 @@ class ActivationService:
                 print(f"[ActivationService] Sensitivity adjusted to: {self.sensitivity}")
                 await self.server.broadcast(self.get_status())
 
+        elif action == "get_settings":
+            await self.server.send_to_client(writer, {
+                "type": "settings",
+                "settings": self.get_settings(),
+            })
+
+        elif action == "set_settings":
+            patch = command.get("settings") or {}
+            applied = self.apply_settings(patch)
+            print(f"[ActivationService] Settings updated: {applied}")
+            await self.server.broadcast(self.get_status())
+            await self.server.send_to_client(writer, {
+                "type": "settings",
+                "settings": self.get_settings(),
+            })
+
         elif action == "pause":
             self._is_paused = True
             print("[ActivationService] Audio monitoring paused by frontend.")
@@ -154,7 +184,41 @@ class ActivationService:
             "audio_device": dev_info.get("name", "None"),
             "sample_rate": self.stream.get_sample_rate(),
             "noise_floor": round(self.detector.noise_floor, 1),
+            "settings": self.get_settings(),
         }
+
+    def get_settings(self) -> Dict[str, Any]:
+        """
+        The settings the user may change, with their current values.
+
+        This is the runtime view of backend/config.py's APP_SETTINGS section.
+        """
+        return {
+            "clap_sensitivity": round(self.detector.sensitivity, 2),
+            "clap_min_low_band_share": round(self.detector.min_low_band_share, 3),
+            "clap_min_crack_band_share": round(self.detector.min_crack_band_share, 3),
+            "clap_max_interval_ms": round(self.detector.max_clap_interval_ms, 1),
+            "clap_min_interval_ms": round(self.detector.min_clap_interval_ms, 1),
+            "clap_pair_confirmation_ms": round(self.detector.pair_confirmation_ms, 1),
+            "clap_min_peak_threshold": round(self.detector.current_min_peak_threshold(), 1),
+            "detection_ratio": round(self.detector.current_detection_ratio(), 2),
+            "editable": list(UI_EDITABLE_SETTINGS),
+        }
+
+    def apply_settings(self, patch: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply a settings patch, ignoring anything that is not editable."""
+        accepted = {}
+        for key in UI_EDITABLE_SETTINGS:
+            if key in patch:
+                try:
+                    value = float(patch[key])
+                except (TypeError, ValueError):
+                    continue
+                accepted[key] = value
+        if accepted:
+            self.detector.apply_settings(accepted)
+            self.sensitivity = self.detector.sensitivity
+        return accepted
 
     async def _audio_processing_loop(self) -> None:
         """Asynchronous audio capture and processing loop."""

@@ -17,17 +17,38 @@ def make_chunk_silence(num_samples: int = 512) -> bytes:
     return b"\x00" * (num_samples * 2)
 
 
+def make_chunk_ambient(num_samples: int = 512, amplitude: int = 400) -> bytes:
+    """Generate a frame of low level room tone."""
+    samples = []
+    for i in range(num_samples):
+        # deterministic pseudo noise
+        value = math.sin(i * 12.9898) * 43758.5453
+        value = value - math.floor(value)
+        samples.append(int((value * 2 - 1) * amplitude))
+    return struct.pack(f"{num_samples}h", *samples)
+
+
 def make_chunk_transient(num_samples: int = 512, peak: int = 8000) -> bytes:
     """
-    Generate an acoustic transient pulse:
-    Sharp spike in the center with fast decay, mimicking a hand clap.
+    Generate an acoustic transient pulse mimicking a hand clap.
+
+    A hand clap is a collision: besides the broadband crack it carries a
+    strong low frequency thud (the palms meeting).  The detector measures that
+    low band to tell a clap from a key click or a speech sound, so the model
+    has to contain it.
     """
     samples = []
     center = num_samples // 4
     for i in range(num_samples):
         dist = abs(i - center)
-        # Fast exponential decay
-        val = int(peak * math.exp(-dist / 8.0) * math.sin(i * 0.4))
+        # Fast exponential decay of the crack
+        crack = math.exp(-dist / 8.0) * math.sin(i * 0.4)
+        # Slower low frequency thud of the impact
+        thud = (
+            math.exp(-dist / 160.0)
+            * math.sin(2.0 * math.pi * 190.0 * i / 44100.0)
+        )
+        val = int(peak * (crack + 0.9 * thud))
         samples.append(max(-32767, min(32767, val)))
     return struct.pack(f"{num_samples}h", *samples)
 
@@ -111,8 +132,8 @@ class TestDoubleClapDetector(unittest.TestCase):
         # Clap 2
         self.feed_clap(peak=11000)
 
-        # Let the burst conclude
-        self.feed_silence(100.0)
+        # Let the burst conclude and the pair be confirmed
+        self.feed_silence(self.detector.pair_confirmation_ms + 100.0)
 
         self.assertEqual(len(self.events), 1, "Valid double clap should trigger exactly 1 event")
         event = self.events[0]
@@ -169,7 +190,7 @@ class TestDoubleClapDetector(unittest.TestCase):
         self.feed_clap(peak=12000)
         self.feed_silence(300.0)
         self.feed_clap(peak=12000)
-        self.feed_silence(50.0)
+        self.feed_silence(self.detector.pair_confirmation_ms + 50.0)
         self.assertEqual(len(self.events), 1)
 
         # Clap immediately again during cooldown (e.g. applause or cheering)
@@ -177,7 +198,7 @@ class TestDoubleClapDetector(unittest.TestCase):
         self.feed_clap(peak=12000)
         self.feed_silence(300.0)
         self.feed_clap(peak=12000)
-        self.feed_silence(100.0)
+        self.feed_silence(self.detector.pair_confirmation_ms + 50.0)
 
         # Should still be only 1 activation
         self.assertEqual(len(self.events), 1, "No duplicate activations during cooldown period")
@@ -189,28 +210,36 @@ class TestDoubleClapDetector(unittest.TestCase):
         self.feed_clap(peak=12000)
         self.feed_silence(300.0)
         self.feed_clap(peak=12000)
-        self.feed_silence(50.0)
+        self.feed_silence(self.detector.pair_confirmation_ms + 50.0)
         self.assertEqual(len(self.events), 2, "New activation accepted after cooldown has elapsed")
 
     def test_sensitivity_adjustment(self):
         """Lower sensitivity requires higher energy; higher sensitivity triggers on lower energy."""
+        # A room with tone in it, so that the sensitivity dependent amplitude
+        # margin is what decides.  In a silent room the absolute floor would
+        # decide instead and the slider would have no effect.
+        def feed_ambient(duration_ms: float):
+            chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0
+            for _ in range(int(duration_ms / chunk_ms)):
+                self.detector.process_frame(make_chunk_ambient(self.chunk_size, 3000))
+
         # Low sensitivity (0.1)
         self.detector.set_sensitivity(0.1)
-        self.feed_silence(200.0)
-        # Moderate clap (peak 2500, RMS ~224)
-        self.feed_clap(peak=2500)
+        feed_ambient(400.0)
+        # Moderate clap
+        self.feed_clap(peak=10500)
         self.feed_silence(300.0)
-        self.feed_clap(peak=2500)
-        self.feed_silence(200.0)
+        self.feed_clap(peak=12000)
+        self.feed_silence(self.detector.pair_confirmation_ms + 100.0)
         self.assertEqual(len(self.events), 0, "Moderate claps should not trigger at sensitivity 0.1")
 
         # High sensitivity (0.95)
         self.detector.set_sensitivity(0.95)
-        self.feed_silence(200.0)
-        self.feed_clap(peak=2500)
+        feed_ambient(400.0)
+        self.feed_clap(peak=12000)
         self.feed_silence(300.0)
-        self.feed_clap(peak=2500)
-        self.feed_silence(100.0)
+        self.feed_clap(peak=12000)
+        self.feed_silence(self.detector.pair_confirmation_ms + 100.0)
         self.assertEqual(len(self.events), 1, "Moderate claps should trigger at sensitivity 0.95")
 
 

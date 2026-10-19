@@ -26,6 +26,24 @@ export interface DaemonStatusPayload {
   audio_device: string;
   sample_rate: number;
   noise_floor?: number;
+  settings?: DaemonSettings;
+}
+
+/**
+ * The subset of the daemon's APP_SETTINGS that the user may change from the
+ * app.  The daemon is the source of truth: it reports the current values in
+ * its status message and accepts a patch through `set_settings`.
+ */
+export interface DaemonSettings {
+  clap_sensitivity: number;
+  clap_min_low_band_share: number;
+  clap_min_crack_band_share: number;
+  clap_max_interval_ms: number;
+  clap_min_interval_ms: number;
+  clap_pair_confirmation_ms: number;
+  clap_min_peak_threshold: number;
+  detection_ratio: number;
+  editable?: string[];
 }
 
 export type VoiceServiceConnectionState = 'connected' | 'disconnected' | 'connecting' | 'error';
@@ -122,6 +140,19 @@ class VoiceService {
 
   public setSensitivity(value: number): void {
     this.sendCommand({ action: 'set_sensitivity', value: Math.max(0.1, Math.min(1.0, value)) });
+  }
+
+  /**
+   * Update the detector settings that the app is allowed to change.
+   * The daemon validates the values and reports the result back in its
+   * status message.
+   */
+  public setSettings(patch: Partial<DaemonSettings>): void {
+    this.sendCommand({ action: 'set_settings', settings: patch });
+  }
+
+  public getSettings(): void {
+    this.sendCommand({ action: 'get_settings' });
   }
 
   public pauseMonitoring(): void {

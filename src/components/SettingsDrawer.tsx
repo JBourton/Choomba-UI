@@ -14,7 +14,12 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { ChoombaSettings, OllamaModelInfo } from '../types/assistant';
-import { DaemonStatusPayload, VoiceServiceConnectionState } from '../services/VoiceService';
+import {
+  DaemonStatusPayload,
+  DaemonSettings,
+  VoiceServiceConnectionState,
+  voiceService,
+} from '../services/VoiceService';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -47,6 +52,10 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('appearance');
   const [savedBanner, setSavedBanner] = useState(false);
+
+  // The daemon owns the detector settings; it reports the current values and
+  // applies any change sent with `set_settings`.
+  const daemonSettings: DaemonSettings | undefined = daemonStatus?.settings;
 
   const showSaveNotice = () => {
     setSavedBanner(true);
@@ -321,26 +330,203 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                 </div>
 
                 {settings.activationMethod === 'double_clap' && (
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-slate-300">Clap Detection Sensitivity</label>
-                      <span className="text-cyan-400">{Math.round(settings.clapSensitivity * 100)}%</span>
+                  <div className="space-y-4">
+                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                      The detector only fires on a real double clap: two loud
+                      strikes, of comparable level, close together, each with
+                      both a low frequency thud and a broadband crack. Speech
+                      and key presses do not have that shape. Raise the
+                      settings below if the assistant still reacts to noise.
+                    </p>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Clap Detection Sensitivity</label>
+                        <span className="text-cyan-400">
+                          {Math.round((daemonSettings?.clap_sensitivity ?? settings.clapSensitivity) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="1.0"
+                        step="0.05"
+                        value={daemonSettings?.clap_sensitivity ?? settings.clapSensitivity}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          onUpdateSettings({ clapSensitivity: value });
+                          voiceService.setSettings({ clap_sensitivity: value });
+                          showSaveNotice();
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        How far above the room tone a clap has to be. Lower values
+                        demand a louder clap, so speech and typing are ignored.
+                        Currently {daemonSettings?.detection_ratio?.toFixed(2) ?? '2.0'}x
+                        the ambient level.
+                      </span>
                     </div>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1.0"
-                      step="0.05"
-                      value={settings.clapSensitivity}
-                      onChange={(e) => {
-                        onUpdateSettings({ clapSensitivity: parseFloat(e.target.value) });
-                        showSaveNotice();
-                      }}
-                      className="w-full accent-cyan-400 bg-slate-800"
-                    />
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      Requires two transient audio energy spikes within 400ms.
-                    </span>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Minimum Clap Level</label>
+                        <span className="text-cyan-400">
+                          {Math.round(daemonSettings?.clap_min_peak_threshold ?? 6000)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="20000"
+                        step="250"
+                        value={daemonSettings?.clap_min_peak_threshold ?? 6000}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_min_peak_threshold: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        How loud a clap has to be in absolute terms (0-32767).
+                        This is what stops the detector reacting to speech or key
+                        presses in a quiet room.
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Slap Strictness (low thud)</label>
+                        <span className="text-cyan-400">
+                          {Math.round((daemonSettings?.clap_min_low_band_share ?? 0.4) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="0.8"
+                        step="0.05"
+                        value={daemonSettings?.clap_min_low_band_share ?? 0.4}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_min_low_band_share: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        How much low frequency &ldquo;thud&rdquo; a clap must have. A
+                        hand clap slaps, a key press ticks - raise this to
+                        ignore more noise.
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Crack Strictness (high crack)</label>
+                        <span className="text-cyan-400">
+                          {Math.round((daemonSettings?.clap_min_crack_band_share ?? 0.2) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="0.8"
+                        step="0.02"
+                        value={daemonSettings?.clap_min_crack_band_share ?? 0.2}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_min_crack_band_share: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        How much broadband &ldquo;crack&rdquo; a clap must have. A voice
+                        has a thud but hardly any crack, so this is what keeps
+                        talking from waking the assistant.
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Double Clap Window</label>
+                        <span className="text-cyan-400">
+                          {Math.round(daemonSettings?.clap_max_interval_ms ?? 450)}ms
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="200"
+                        max="800"
+                        step="10"
+                        value={daemonSettings?.clap_max_interval_ms ?? 450}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_max_interval_ms: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        The maximum gap between the two strikes. A normal double
+                        clap is 150-450ms apart.
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Minimum Gap</label>
+                        <span className="text-cyan-400">
+                          {Math.round(daemonSettings?.clap_min_interval_ms ?? 150)}ms
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="80"
+                        max="400"
+                        step="10"
+                        value={daemonSettings?.clap_min_interval_ms ?? 150}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_min_interval_ms: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        Anything faster than this is a room echo rather than a
+                        second strike.
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-300">Train Guard</label>
+                        <span className="text-cyan-400">
+                          {Math.round(daemonSettings?.clap_pair_confirmation_ms ?? 450)}ms
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="150"
+                        max="900"
+                        step="10"
+                        value={daemonSettings?.clap_pair_confirmation_ms ?? 450}
+                        onChange={(e) => {
+                          voiceService.setSettings({
+                            clap_pair_confirmation_ms: parseFloat(e.target.value),
+                          });
+                        }}
+                        className="w-full accent-cyan-400 bg-slate-800"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        A third sound inside this window cancels the pair, so a
+                        burst of key presses is not a double clap. It also delays
+                        the activation by the same amount.
+                      </span>
+                    </div>
                   </div>
                 )}
 

@@ -185,9 +185,12 @@ export default function App() {
   // Synchronize sensitivity and activation mode changes to daemon
   useEffect(() => {
     voiceService.setSensitivity(settings.clapSensitivity);
+    // The daemon's double-clap detector must only run in double-clap mode.
+    // Every other mode (wake word, manual only) has to stop it, otherwise a
+    // clap would still wake the assistant.
     if (settings.activationMethod === 'double_clap') {
       voiceService.resumeMonitoring();
-    } else if (settings.activationMethod === 'manual_only') {
+    } else {
       voiceService.pauseMonitoring();
     }
   }, [settings.clapSensitivity, settings.activationMethod]);

@@ -86,6 +86,48 @@ class TestEndToEndActivationIntegration(unittest.IsolatedAsyncioTestCase):
         writer.close()
         await writer.wait_closed()
 
+    async def test_settings_roundtrip(self):
+        """The UI can read and change the detector settings over the socket."""
+        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+        writer.write(self._build_handshake())
+        await writer.drain()
+        await reader.readuntil(b"\r\n\r\n")
+
+        async def send(obj):
+            payload = json.dumps(obj).encode()
+            writer.write(bytearray([0x81, len(payload)]) + payload)
+            await writer.drain()
+
+        async def recv():
+            head = await reader.readexactly(2)
+            length = head[1] & 0x7F
+            if length == 126:
+                length = int.from_bytes(await reader.readexactly(2), "big")
+            return json.loads((await reader.readexactly(length)).decode())
+
+        await send({"action": "get_settings"})
+        reply = await recv()
+        self.assertEqual(reply.get("type"), "settings")
+        self.assertIn("clap_sensitivity", reply.get("settings", {}))
+
+        await send({"action": "set_settings", "settings": {
+            "clap_sensitivity": 0.35,
+            "clap_min_low_band_share": 0.5,
+            "sample_rate": 8000,       # not editable, must be ignored
+        }})
+        applied = await recv()
+        while applied.get("type") != "settings":
+            applied = await recv()
+        self.assertAlmostEqual(
+            self.service.detector.sensitivity, 0.35, places=3
+        )
+        self.assertAlmostEqual(
+            self.service.detector.min_low_band_share, 0.5, places=3
+        )
+
+        writer.close()
+        await writer.wait_closed()
+
     async def test_frontend_reconnection_resilience(self):
         """Verify client can disconnect and reconnect cleanly without daemon issues."""
         # Client 1 connects
