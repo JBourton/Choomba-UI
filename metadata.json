@@ -1,0 +1,6 @@
+{
+  "name": "Choomba — Local-First AI Assistant Interface",
+  "description": "A minimalist, futuristic personal AI assistant interface inspired by JARVIS with an animated holographic core, offline-first architecture, and local Ollama & PostgreSQL compatibility.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

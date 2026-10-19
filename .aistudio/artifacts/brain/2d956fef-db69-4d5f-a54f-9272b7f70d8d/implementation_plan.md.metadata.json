@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for Choomba, a JARVIS-inspired local-first AI assistant interface featuring an interactive SVG/CSS holographic orb, state machine, simulated local Ollama/PostgreSQL services, Web Audio chimes, and slide-out telemetry drawers.",
+  "updatedAt": "2026-10-17T19:08:06.454544087Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
