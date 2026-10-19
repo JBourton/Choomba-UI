@@ -13,6 +13,9 @@ interface TopStatusBarProps {
   onOpenArchitectureGuide: () => void;
   conversationOpen: boolean;
   settingsOpen: boolean;
+  isMonitoring?: boolean;
+  daemonConnected?: boolean;
+  onToggleMonitoring?: () => void;
 }
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({
@@ -26,6 +29,9 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
   onOpenArchitectureGuide,
   conversationOpen,
   settingsOpen,
+  isMonitoring = false,
+  daemonConnected = false,
+  onToggleMonitoring,
 }) => {
   return (
     <header className="w-full h-14 bg-[#050A12]/80 backdrop-blur-md border-b border-cyan-500/15 px-4 md:px-6 flex items-center justify-between gap-4 select-none relative z-30">
@@ -99,6 +105,36 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
             {state}
           </span>
         </span>
+
+        <span className="text-slate-600" aria-hidden="true">·</span>
+
+        <button
+          onClick={onToggleMonitoring}
+          title={
+            isMonitoring
+              ? 'Microphone monitoring active (Click to pause clap detection)'
+              : daemonConnected
+              ? 'Microphone monitoring paused (Click to resume clap detection)'
+              : 'Activation daemon offline (Run python3 -m backend.service)'
+          }
+          className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors focus:outline-none cursor-pointer"
+        >
+          <span className="text-slate-500">MIC:</span>
+          <span
+            className={`flex items-center gap-1 font-medium ${
+              isMonitoring
+                ? 'text-cyan-400'
+                : daemonConnected
+                ? 'text-amber-400'
+                : 'text-slate-500'
+            }`}
+          >
+            {isMonitoring && (
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            )}
+            {isMonitoring ? 'CLAP DETECTOR' : daemonConnected ? 'PAUSED' : 'OFFLINE'}
+          </span>
+        </button>
       </div>
 
       {/* Zone 3: Navigation and Utility Controls */}

@@ -7,6 +7,7 @@ interface DevStateSwitcherProps {
   onSelectState: (state: AssistantState) => void;
   onRunFullDemoSequence: () => void;
   isSequenceRunning: boolean;
+  onSimulateClap?: () => void;
 }
 
 const STATES: { id: AssistantState; label: string; desc: string }[] = [
@@ -25,6 +26,7 @@ export const DevStateSwitcher: React.FC<DevStateSwitcherProps> = ({
   onSelectState,
   onRunFullDemoSequence,
   isSequenceRunning,
+  onSimulateClap,
 }) => {
   return (
     <div className="w-full bg-[#050A12]/95 border-t border-cyan-500/20 px-4 py-2.5 backdrop-blur-md relative z-20">
@@ -61,29 +63,43 @@ export const DevStateSwitcher: React.FC<DevStateSwitcherProps> = ({
           })}
         </div>
 
-        {/* Automated Full Loop Sequence Trigger */}
-        <button
-          onClick={onRunFullDemoSequence}
-          disabled={isSequenceRunning}
-          title="Run complete automated JARVIS interaction loop"
-          className={`px-3 py-1 rounded font-mono text-[11px] flex items-center gap-1.5 border transition-all ${
-            isSequenceRunning
-              ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 animate-pulse'
-              : 'bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border-cyan-500/40 text-cyan-300 hover:border-cyan-400 hover:text-white'
-          }`}
-        >
-          {isSequenceRunning ? (
-            <>
-              <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-spin" />
-              <span>RUNNING SEQUENCE...</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3 h-3 text-cyan-400" />
-              <span>TEST FULL LOOP</span>
-            </>
+        <div className="flex items-center gap-2">
+          {onSimulateClap && (
+            <button
+              onClick={onSimulateClap}
+              disabled={isSequenceRunning}
+              title="Send a simulated double-clap event to test activation roundtrip without physical microphone"
+              className="px-2.5 py-1 rounded font-mono text-[11px] flex items-center gap-1.5 border border-cyan-500/30 bg-slate-900/60 text-cyan-300 hover:border-cyan-400 hover:text-white transition-all cursor-pointer"
+            >
+              <span>👏</span>
+              <span>SIMULATE CLAP</span>
+            </button>
           )}
-        </button>
+
+          {/* Automated Full Loop Sequence Trigger */}
+          <button
+            onClick={onRunFullDemoSequence}
+            disabled={isSequenceRunning}
+            title="Run complete automated JARVIS interaction loop"
+            className={`px-3 py-1 rounded font-mono text-[11px] flex items-center gap-1.5 border transition-all ${
+              isSequenceRunning
+                ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 animate-pulse'
+                : 'bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border-cyan-500/40 text-cyan-300 hover:border-cyan-400 hover:text-white'
+            }`}
+          >
+            {isSequenceRunning ? (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-cyan-300 animate-spin" />
+                <span>RUNNING SEQUENCE...</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3 h-3 text-cyan-400" />
+                <span>TEST FULL LOOP</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

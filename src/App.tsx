@@ -8,6 +8,7 @@ import { AssistantState, ChatMessage, OllamaModelInfo, ChoombaSettings } from '.
 import { audioSoundService } from './services/AudioSoundService';
 import { modelService } from './services/ModelService';
 import { assistantService } from './services/AssistantService';
+import { voiceService, DaemonStatusPayload, VoiceServiceConnectionState } from './services/VoiceService';
 import { TopStatusBar } from './components/TopStatusBar';
 import { CentralStage } from './components/CentralStage';
 import { BottomCommandDeck } from './components/BottomCommandDeck';
@@ -57,6 +58,8 @@ export default function App() {
   const [streamingText, setStreamingText] = useState<string>('');
   const [transcription, setTranscription] = useState<string>('');
   const [settings, setSettings] = useState<ChoombaSettings>(DEFAULT_SETTINGS);
+  const [daemonStatus, setDaemonStatus] = useState<DaemonStatusPayload | null>(null);
+  const [connectionState, setConnectionState] = useState<VoiceServiceConnectionState>('disconnected');
 
   // Drawers and Modals
   const [conversationOpen, setConversationOpen] = useState<boolean>(false);
@@ -111,6 +114,96 @@ export default function App() {
       default:
         break;
     }
+  }, []);
+
+  // Connect to local voice activation daemon and subscribe to double-clap events
+  useEffect(() => {
+    voiceService.connect();
+
+    const unsubConn = voiceService.onConnectionChange((status) => {
+      setConnectionState(status);
+    });
+
+    const unsubStatus = voiceService.onStatus((status) => {
+      setDaemonStatus(status);
+    });
+
+    const unsubActivation = voiceService.onActivation((event) => {
+      setState((currentState) => {
+        // Prevent duplicate activation events from triggering overlapping sessions
+        if (currentState !== 'IDLE') {
+          return currentState;
+        }
+
+        // Clear any running sequence timers
+        sequenceTimeoutRef.current.forEach(clearTimeout);
+        sequenceTimeoutRef.current = [];
+
+        // 1. Transition to ACTIVATED
+        transitionToState('ACTIVATED');
+        const intervalText = event.metadata?.interval_ms
+          ? ` (${Math.round(event.metadata.interval_ms)}ms)`
+          : '';
+        setTranscription(`Double-clap acoustic trigger detected${intervalText}. Assistant activated.`);
+        setStreamingText('');
+
+        // 2. Transition to LISTENING after holographic core flash (800ms)
+        // Important: Speech recognition is not implemented in this phase.
+        // LISTENING indicates Choomba is primed and ready for the next modular stage.
+        const t1 = setTimeout(() => {
+          transitionToState('LISTENING');
+          setTranscription('Choomba activated via double-clap. Standing by for voice command or prompt...');
+        }, 800);
+        sequenceTimeoutRef.current.push(t1);
+
+        // 3. Prototype timeout: return to IDLE after 8.8s if no command is entered
+        const t2 = setTimeout(() => {
+          setState((s) => {
+            if (s === 'LISTENING') {
+              transitionToState('IDLE');
+              setTranscription('');
+              setStreamingText('');
+              return 'IDLE';
+            }
+            return s;
+          });
+        }, 8800);
+        sequenceTimeoutRef.current.push(t2);
+
+        return 'ACTIVATED';
+      });
+    });
+
+    return () => {
+      unsubConn();
+      unsubStatus();
+      unsubActivation();
+      voiceService.disconnect();
+    };
+  }, [transitionToState]);
+
+  // Synchronize sensitivity and activation mode changes to daemon
+  useEffect(() => {
+    voiceService.setSensitivity(settings.clapSensitivity);
+    if (settings.activationMethod === 'double_clap') {
+      voiceService.resumeMonitoring();
+    } else if (settings.activationMethod === 'manual_only') {
+      voiceService.pauseMonitoring();
+    }
+  }, [settings.clapSensitivity, settings.activationMethod]);
+
+  // Toggle microphone monitoring between active and paused
+  const handleToggleMonitoring = useCallback(() => {
+    if (daemonStatus?.state === 'monitoring') {
+      voiceService.pauseMonitoring();
+    } else {
+      voiceService.resumeMonitoring();
+    }
+  }, [daemonStatus]);
+
+  // Dev helper: trigger simulated double-clap event over WebSocket
+  const handleSimulateClap = useCallback(() => {
+    voiceService.simulateClap();
   }, []);
 
   // Submit text message flow
@@ -289,6 +382,9 @@ export default function App() {
         onOpenArchitectureGuide={() => setArchGuideOpen(true)}
         conversationOpen={conversationOpen}
         settingsOpen={settingsOpen}
+        isMonitoring={connectionState === 'connected' && daemonStatus?.state === 'monitoring'}
+        daemonConnected={connectionState === 'connected'}
+        onToggleMonitoring={handleToggleMonitoring}
       />
 
       {/* Central Holographic Interaction Area */}
@@ -316,6 +412,7 @@ export default function App() {
           onSelectState={(s) => transitionToState(s)}
           onRunFullDemoSequence={handleRunFullDemoSequence}
           isSequenceRunning={isSequenceRunning}
+          onSimulateClap={handleSimulateClap}
         />
       )}
 
@@ -336,6 +433,8 @@ export default function App() {
         settings={settings}
         onUpdateSettings={(newVals) => setSettings((prev) => ({ ...prev, ...newVals }))}
         models={availableModels}
+        daemonStatus={daemonStatus}
+        connectionState={connectionState}
       />
 
       {/* Model Selector Modal */}

@@ -1,0 +1,24 @@
+[Unit]
+Description=Choomba Local Audio Double-Clap Activation Daemon
+Documentation=file:///home/jb/Choomba/Choomba%20Code/Choomba-UI/README.md
+After=pipewire.service sound.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jb/Choomba/Choomba Code/Choomba-UI
+ExecStart=/usr/bin/python3 -m backend.service
+Restart=on-failure
+RestartSec=3s
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+# Sandboxing & security hardening
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/tmp
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

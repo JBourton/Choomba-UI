@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { ChoombaSettings, OllamaModelInfo } from '../types/assistant';
+import { DaemonStatusPayload, VoiceServiceConnectionState } from '../services/VoiceService';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -21,6 +22,8 @@ interface SettingsDrawerProps {
   settings: ChoombaSettings;
   onUpdateSettings: (newSettings: Partial<ChoombaSettings>) => void;
   models: OllamaModelInfo[];
+  daemonStatus?: DaemonStatusPayload | null;
+  connectionState?: VoiceServiceConnectionState;
 }
 
 type TabKey =
@@ -39,6 +42,8 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   settings,
   onUpdateSettings,
   models,
+  daemonStatus,
+  connectionState = 'disconnected',
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('appearance');
   const [savedBanner, setSavedBanner] = useState(false);
@@ -338,6 +343,62 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     </span>
                   </div>
                 )}
+
+                {/* Live Activation Daemon Telemetry */}
+                <div className="mt-4 p-3 rounded-lg border border-cyan-500/20 bg-slate-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400 font-semibold flex items-center gap-1.5">
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          connectionState === 'connected'
+                            ? daemonStatus?.state === 'monitoring'
+                              ? 'bg-cyan-400 animate-pulse shadow-[0_0_6px_#43CFFF]'
+                              : 'bg-amber-400'
+                            : 'bg-slate-600'
+                        }`}
+                      />
+                      LOCAL ACTIVATION DAEMON
+                    </span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-mono ${
+                        connectionState === 'connected'
+                          ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
+                          : 'bg-slate-950/60 text-slate-500 border border-slate-800'
+                      }`}
+                    >
+                      {connectionState === 'connected'
+                        ? daemonStatus?.state === 'monitoring'
+                          ? 'ACTIVE (LOOPBACK)'
+                          : 'PAUSED'
+                        : 'OFFLINE (DISCONNECTED)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] text-slate-400 font-mono">
+                    <div>
+                      <span className="text-slate-500">DAEMON ENDPOINT: </span>
+                      <span className="text-slate-300">ws://127.0.0.1:8765</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">AUDIO HARDWARE: </span>
+                      <span className="text-slate-300 truncate block">
+                        {daemonStatus?.audio_device || 'PipeWire / Default'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">SAMPLE RATE: </span>
+                      <span className="text-slate-300">
+                        {daemonStatus?.sample_rate ? `${daemonStatus.sample_rate} Hz` : '44,100 Hz'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">AMBIENT NOISE: </span>
+                      <span className="text-cyan-400">
+                        {daemonStatus?.noise_floor ? `${daemonStatus.noise_floor} RMS` : 'Calibrated'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="pt-2 flex items-center justify-between">
                   <div>
