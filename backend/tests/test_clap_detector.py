@@ -56,6 +56,11 @@ class TestDoubleClapDetector(unittest.TestCase):
         self.detector.start()
         self.events: List[ActivationEvent] = []
         self.detector.set_callback(lambda e: self.events.append(e))
+        # The detector calibrates its background level from the first frames.
+        # Feed enough silence to complete that calibration so the adaptive
+        # threshold is live for the assertions of every test.
+        chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0
+        self.feed_silence(self.detector._calibration_target * chunk_ms)
 
     def feed_silence(self, duration_ms: float):
         chunk_ms = (self.chunk_size / self.sample_rate) * 1000.0

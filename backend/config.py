@@ -33,7 +33,10 @@ CHANNELS = 1
 DEFAULT_SENSITIVITY = float(os.environ.get("CHOOMBA_SENSITIVITY", "0.8"))
 MIN_CLAP_INTERVAL_MS = float(os.environ.get("CHOOMBA_MIN_CLAP_INTERVAL_MS", "140.0"))
 MAX_CLAP_INTERVAL_MS = float(os.environ.get("CHOOMBA_MAX_CLAP_INTERVAL_MS", "850.0"))
-MAX_TRANSIENT_DURATION_MS = float(os.environ.get("CHOOMBA_MAX_TRANSIENT_DURATION_MS", "220.0"))
+# A hand clap is 1-3 ms wide. The capture chunk is ~11.6 ms, so anything that
+# stays loud for longer than a handful of chunks is continuous sound (speech,
+# music, a passing car) and must not be treated as a clap.
+MAX_TRANSIENT_DURATION_MS = float(os.environ.get("CHOOMBA_MAX_TRANSIENT_DURATION_MS", "60.0"))
 COOLDOWN_MS = float(os.environ.get("CHOOMBA_COOLDOWN_MS", "1500.0"))
 
 # Frontend Session Timeout (Auto-return to IDLE if no command follows activation)

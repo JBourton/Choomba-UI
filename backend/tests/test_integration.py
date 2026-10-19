@@ -54,8 +54,10 @@ class TestEndToEndActivationIntegration(unittest.IsolatedAsyncioTestCase):
         # Read handshake response
         await reader.readuntil(b"\r\n\r\n")
 
-        # Feed audio into mock stream: baseline calm
-        for _ in range(15):
+        # Feed audio into mock stream: baseline calm.
+        # The detector calibrates its background level from the first frames,
+        # so enough silence has to be delivered before any clap is analysed.
+        for _ in range(30):
             self.service.stream.enqueue_chunk(make_chunk_silence(512))
 
         # First clap

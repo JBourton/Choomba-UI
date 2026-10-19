@@ -194,13 +194,23 @@ The service strictly binds to loopback (`127.0.0.1`) and validates the browser `
   "timestamp": "2026-10-19T01:45:00.000Z",
   "metadata": {
     "interval_ms": 320.5,
-    "confidence": 0.94,
+    "confidence": 0.82,
     "first_clap_rms": 1420.0,
     "second_clap_rms": 1680.0,
-    "noise_floor": 210.0
+    "noise_floor": 210.0,
+    "first_clap_peak": 9120.0,
+    "second_clap_peak": 10440.0
   }
 }
 ```
+
+* `*_rms` values are short-window (1.45 ms) RMS levels, `*_peak` values are the
+  sample peaks the detection is actually based on. All amplitudes are 16-bit
+  linear units (full scale = 32768).
+* `confidence` is a bounded score in `[0, 0.99]` that combines how far the
+  second clap stood above the detection threshold with how centred the
+  inter-clap interval was inside the allowed window. It is *not* a constant:
+  a marginal event scores noticeably lower than a clear one.
 
 #### Status Event (Backend → Frontend):
 ```json
@@ -227,14 +237,35 @@ The service strictly binds to loopback (`127.0.0.1`) and validates the browser `
 
 ## Acoustic Physics, Limitations & Tuning
 
-Double-clap detection evaluates acoustic transients (sudden energy jumps) against an adaptive exponential moving average (EMA) noise floor:
+Double-clap detection evaluates acoustic transients against an adaptive
+background estimate. A hand clap is a *short, high-amplitude impulse*, so the
+detector tests three independent properties of every 11.6 ms frame:
 
-1. **Transient Duration Gate**: Claps are short impulses (<80ms). Sustained loud sounds (speech, singing, vacuum cleaner, fan noise) stay high for >90ms and are rejected.
-2. **Tempo Bounds**: Two claps must occur within 160ms–750ms. An impulse <160ms after the first is rejected as room reverberation or echo. An impulse >750ms resets the window.
-3. **Cooldown**: After a successful trigger, a 1500ms cooldown prevents cheering, applause, or echo from triggering duplicate activations.
-4. **Limitations**:
+1. **Amplitude**: the frame peak must stand above the tracked ambient peak
+   level (default 1.5x). The peak is used rather than an energy average
+   because an 11.6 ms average dilutes a 1–3 ms clap by roughly 8x while
+   leaving continuous background noise untouched.
+2. **Concentration**: the loud energy must sit in only a few of the frame's
+   1.45 ms analysis windows. A clap lights up one or two windows; speech,
+   music, a fan or a passing car fill all of them and are rejected whatever
+   their level is.
+3. **Duration**: a burst that stays loud for longer than 60 ms is continuous
+   sound, not a clap.
+
+Supporting rules:
+
+4. **Burst width**: the transient has to exceed the ambient peak level for
+   more than one sample, which rejects single-sample USB/ALSA glitches.
+5. **Tempo bounds**: two claps must occur within 140 ms–850 ms. A transient
+   that arrives sooner than the minimum interval is discarded as a room
+   reverberation or echo - it can never be paired with a later, unrelated
+   sound.
+6. **Cooldown**: after a successful trigger, a 1500 ms cooldown prevents
+   cheering, applause, or echo from triggering duplicate activations.
+7. **Limitations**:
    - Hard surface reflections (tile/glass) may create reverberant tails; reducing room gain or positioning the mic helps.
-   - Sharp mechanical sounds (dropping a ceramic mug, hard desk slap) can mimic a clap transient.
-   - If ambient room noise changes, the adaptive noise floor tracks baseline changes after 1–2 seconds.
-   - Tuning: Use the sensitivity slider in **Settings Drawer → Voice Activation** (default 80%). Lower to 50–60% in noisy rooms, or raise to 90% if clapping from across the room.
+   - Sharp mechanical sounds (dropping a ceramic mug, hard desk slap) can mimic a clap transient - they are acoustically the same kind of event.
+   - The ambient level is tracked with a slow EMA and **no absolute ceiling**, so a loud room raises the threshold instead of pinning it. The detector needs the clap's peak to be roughly 1.5x the ambient peak, which in practice means the room tone has to stay below about -16 dBFS.
+   - If ambient room noise changes, the adaptive background tracks the change within ~0.4 s.
+   - Tuning: Use the sensitivity slider in **Settings Drawer → Voice Activation** (default 80%). Lower to 50–60% in noisy rooms, or raise to 90% if clapping from across the room. Sensitivity only changes the amplitude margin - continuous sound is rejected on shape, not on level, so it can never be "tuned in".
 

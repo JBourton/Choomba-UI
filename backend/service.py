@@ -9,6 +9,7 @@ import json
 import os
 import signal
 import sys
+import time
 from typing import Dict, Any, Optional
 
 from .config import (
@@ -162,6 +163,10 @@ class ActivationService:
         frame_counter = 0
         zero_frames = 0
         zero_warned = False
+        # Audio-timeline clock: the detector measures burst durations and
+        # inter-clap intervals from these timestamps, so they must follow the
+        # captured audio rather than the (jittery) wall clock.
+        audio_time = time.monotonic()
 
         while self._is_running:
             if self._is_paused:
@@ -194,15 +199,17 @@ class ActivationService:
                     zero_frames = 0
 
                 # Process frame in transient detector
-                self.detector.process_frame(raw_bytes)
+                self.detector.process_frame(raw_bytes, audio_time)
+                audio_time += self.detector.chunk_duration_sec
 
                 # Periodic acoustic heartbeat (every ~8 seconds)
                 if frame_counter % 700 == 0:
                     thresh = self.detector.current_detection_threshold()
                     nf = self.detector.noise_floor
                     print(
-                        f"[ActivationService] Ambient: {nf:.1f} RMS | "
-                        f"Trigger threshold: {thresh:.1f} RMS | "
+                        f"[ActivationService] Ambient: {nf:.1f} RMS "
+                        f"(peak {self.detector.background_peak:.1f}) | "
+                        f"Trigger threshold: {thresh:.1f} | "
                         f"Clients: {self.server.client_count}"
                     )
 
@@ -220,12 +227,11 @@ class ActivationService:
         # Open audio stream
         try:
             self.stream.open()
-            # Sync sample rate if hardware forced a specific rate (e.g. 44100)
+            # Sync sample rate if hardware forced a specific rate (e.g. 48000).
+            # set_sample_rate() also recomputes the high-pass coefficients and
+            # the analysis-window geometry for the new rate.
             effective_rate = self.stream.get_sample_rate()
-            if effective_rate != self.detector.sample_rate:
-                self.detector.sample_rate = effective_rate
-                self.detector.chunk_duration_sec = self.detector.chunk_size / effective_rate
-                self.detector.chunk_duration_ms = self.detector.chunk_duration_sec * 1000.0
+            self.detector.set_sample_rate(effective_rate)
 
             print(
                 f"[ActivationService] Audio stream opened: {self.stream.get_device_info().get('name')} "

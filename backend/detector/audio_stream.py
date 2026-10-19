@@ -6,6 +6,7 @@ Provides hardware capture via PyAudio/PortAudio/PipeWire and mock stream support
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 import sys
+import time
 
 
 class AudioStreamInterface(ABC):
@@ -183,6 +184,12 @@ class MockAudioStream(AudioStreamInterface):
     """
     Mock audio capture stream for automated unit testing.
     Feeds pre-programmed audio chunks into the detector.
+
+    When the queue is empty the stream returns silence *paced at the real
+    capture rate*, so a mock session has the same timing behaviour as real
+    hardware.  Without that pacing a mock session would deliver frames faster
+    than real time and any timing-sensitive logic (inter-clap intervals,
+    transient durations) would be measured against a fictitious clock.
     """
 
     def __init__(self, sample_rate: int = 44100, chunk_size: int = 512):
@@ -206,6 +213,9 @@ class MockAudioStream(AudioStreamInterface):
     def read(self, num_frames: int) -> bytes:
         if self._queue:
             return self._queue.pop(0)
+        # No data queued: behave like a real capture device and deliver one
+        # chunk worth of silence every chunk_duration.
+        time.sleep(num_frames / self.sample_rate)
         return b"\x00" * (num_frames * 2)
 
     def close(self) -> None:
